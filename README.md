@@ -8,7 +8,7 @@
 ### pattern matching
 ```
 // tips
-// 选 -> 语法初衷：是因为 lambda 使用了 =>，后来发现 java23 switch 语法
+// 选 -> 语法初衷：是因为 lambda 使用了 =>，后来发现 java13 switch 语法
 /*
 int numLetters = switch (day) {
     case MONDAY, FRIDAY, SUNDAY -> 6;
