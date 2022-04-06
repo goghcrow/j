@@ -1,0 +1,251 @@
+package j;
+
+import org.jetbrains.annotations.NotNull;
+
+import java.util.List;
+import java.util.Map;
+import java.util.*;
+
+import static j.Value.*;
+import static j.Value.ObjectValue.Def;
+
+import java.lang.String;
+
+/**
+ * TODO dump Map
+ * @author chuxiaofeng
+ */
+@SuppressWarnings({"WeakerAccess", "UnusedReturnValue"})
+public final class Dumper {
+    public final static String SEP = "\t";
+
+    public static String dump(@NotNull Value val, boolean rec) {
+        return dump(new StringBuilder(), val, set(), 0, rec).toString();
+    }
+
+    public static StringBuilder dumpList(StringBuilder buf, @NotNull ListValue v) {
+        List<Value> vals = v.list;
+        Set<Value> set = set();
+        set.add(v);
+        return dumpListValue(buf, vals, set, 0, false);
+    }
+
+    public static StringBuilder dumpMap(StringBuilder buf, @NotNull Value v) {
+        Map<String, Def> object = ((ObjectValue) v).object;
+        Set<Value> set = set();
+        set.add(v);
+        return dumpDotObject(buf, object, set, 0, false);
+    }
+
+    // -+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ \\
+
+    static Set<Value> set() {
+        // return new HashSet<>();
+        return Collections.newSetFromMap(new IdentityHashMap<>());
+    }
+
+    static void pretty(StringBuilder buf, int n) {
+        buf.append("\n");
+        for(int i = 0; i < n; i++) {
+            buf.append(SEP);
+        }
+    }
+
+    static boolean dumpRec(StringBuilder buf, Set<Value> s, Value v) {
+        if (v == Null) {
+            return false;
+        }
+
+        if (s.contains(v)) {
+            buf.append("*recursive*");
+            return true;
+        } else {
+            s.add(v);
+            return false;
+        }
+    }
+
+    static boolean trivial(StringBuilder buf, Value v) {
+        Type type = v.type();
+        if (type == Type.Null || type == Type.Bool || type == Type.Int || type == Type.Float) {
+            buf.append(v);
+        } else if (type == Type.Str) {
+            buf.append("\"").append(v.toString().replace("\\", "\\\\")).append("\"");
+        } else if (v instanceof FunValue) {
+            buf.append(v);
+        } else {
+            return false;
+        }
+        return true;
+    }
+
+    static StringBuilder dump(StringBuilder buf, Value v, Set<Value> s, int n, boolean rec) {
+        if (v == null) {
+            return buf.append(".null");
+        }
+        if (v instanceof Type) {
+            return buf.append(v.toString());
+        }
+
+        if (dumpRec(buf, s, v)) {
+            return buf;
+        }
+
+        if (rec) {
+            return dumpObjValue(buf, ((ObjectValue) v), s, n, rec);
+        } else {
+            if (trivial(buf, v)) {
+                return buf;
+            }
+            Type type = v.type();
+            if (v instanceof ListValue) {
+                return dumpListValue(buf, ((ListValue) v).list, s, 0, rec);
+            } else if (v instanceof ObjectValue) {
+                return dumpDotObject(buf, ((ObjectValue) v).object, s, 0, rec);
+            } else {
+                return dumpObjValue(buf, ((ObjectValue) v), s, n, rec);
+            }
+        }
+    }
+
+    static StringBuilder dumpObjValue(StringBuilder buf, ObjectValue v, Set<Value> s, int n, boolean rec) {
+        buf.append("[");
+        if (rec) {
+            ++n;
+            pretty(buf, n);
+        }
+
+        buf.append(".type : ").append(v.type());
+        buf.append(",");
+        if (rec) {
+            pretty(buf, n);
+        }
+
+        buf.append(".value : ");
+        dumpDotValue(buf, v, s, n, rec);
+        buf.append(",");
+        if (rec) {
+            pretty(buf, n);
+        }
+
+        buf.append(".object : ");
+        dumpDotObject(buf, v.object, s, n, rec);
+        buf.append(",");
+        if (rec) {
+            pretty(buf, n);
+        }
+
+        buf.append(".parent : ");
+        dumpDotParent(buf, v.parent, s, n, rec);
+
+        if (rec) {
+            --n;
+            pretty(buf, n);
+        }
+        buf.append("]");
+        return buf;
+    }
+
+    static StringBuilder dumpDotValue(StringBuilder buf, Value v, Set<Value> s, int n, boolean rec) {
+        Type type = v.type();
+        if (type == Type.Null || type == Type.Bool
+                || type == Type.Int || type == Type.Float || v instanceof FunValue) {
+            buf.append(v);
+        } else if (type == Type.Str) {
+            buf.append("\"").append(v.toString().replace("\\", "\\\\")).append("\"");
+        } else if (v instanceof ListValue) {
+            return dumpListValue(buf, ((ListValue) v).list, s, n, rec);
+        } else if (v instanceof MapValue) {
+            // todo
+        } else if (v.getClass() == ObjectValue.class) {
+            // todo
+            return buf.append(".null");
+        } else {
+            throw Error.bug(null, "type?");
+        }
+        return buf;
+    }
+
+    static StringBuilder dumpDotParent(StringBuilder buf, Value v, Set<Value> s, int n, boolean rec) {
+        if (v == null) {
+            return buf.append(".null");
+        }
+        if (!rec && v instanceof Proto) {
+            return buf.append(v);
+        } else {
+            return dump(buf, v, s, n, rec);
+        }
+    }
+
+    static StringBuilder dumpDotObject(StringBuilder buf, @NotNull Map<String, Def> object, Set<Value> s, int n, boolean rec) {
+        if (object.isEmpty()) {
+            return buf.append("[:]");
+        } else {
+            buf.append("[");
+            if (rec) {
+                ++n;
+                pretty(buf, n);
+            }
+
+            boolean first = true;
+            for (Map.Entry<String, Def> it : object.entrySet()) {
+                if (first) {
+                    first = false;
+                    dumpMapPair(buf, s, n, rec, it);
+                } else {
+                    buf.append(", ");
+                    if (rec) {
+                        pretty(buf, n);
+                    }
+                    dumpMapPair(buf, s, n, rec, it);
+                }
+            }
+
+            if (rec) {
+                --n;
+                pretty(buf, n);
+            }
+            return buf.append("]");
+        }
+    }
+
+    static StringBuilder dumpMapPair(StringBuilder buf, Set<Value> s, int n, boolean rec, Map.Entry<String, Def> it) {
+        String k = it.getKey();
+        Value v = it.getValue().val;
+        dump(buf, Value.String(k), s, n, rec);
+        buf.append(" : ");
+        return dump(buf, v, s, n, rec);
+    }
+
+    static StringBuilder dumpListValue(StringBuilder buf, List<Value> vals, Set<Value> s, int n, boolean rec) {
+        if (vals.isEmpty()) {
+            return buf.append("[]");
+        } else {
+            buf.append("[");
+            if (rec) {
+                ++n;
+                pretty(buf, n);
+            }
+
+            boolean first = true;
+            for (Value val : vals) {
+                if (first) {
+                    dump(buf, val, s, n, rec);
+                    first = false;
+                } else {
+                    buf.append(", ");
+                    if (rec) {
+                        pretty(buf, n);
+                    }
+                    dump(buf, val, s, n, rec);
+                }
+            }
+
+            if (rec) {
+                --n;
+                pretty(buf, n);
+            }
+            return buf.append("]");
+        }
+    }
+}
